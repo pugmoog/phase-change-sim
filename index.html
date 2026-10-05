@@ -1,0 +1,272 @@
+<h1>Fluid (or solid) simulation</h1>
+<canvas width=700px height=600px></canvas>
+<br>
+Thing that happens when you click (or drag):
+<select id="click">
+    <option value="repel">Repel</option>
+    <option value="freeze">Freeze (like cooling)</option>
+    <option value="wiggle">Wiggle (like warming)</option>
+    <option value="attract">Attract</option>
+    <option value="10bil">Big wiggle</option>
+    <option value="carry">Carry</option>
+    <option value="add">Add more particles</option>
+    <option value="subtract">Subtract particles</option>
+</select><br>
+Click or drag radius: <input id="radier" type="number" value="50">
+<br>
+Presets:
+<button id="solid" onclick="preset(0)">Solid</button>
+<button id="liquid" onclick="preset(1)">Liquid</button>
+<button id="gas" onclick="preset(2)">Gas</button>
+<button id="empty" onclick="preset(3)">Empty</button>
+<br><br>
+<code id="particle-count">Particles:     100</code><br>
+<code id="avg-speed">Avg. Speed:    1 ppt </code><small>(pixels per tick)</small><br>
+<code id="state">State:         liquid</code>
+<br><br>
+<p>This simulation is not intended to accurately simulate any real world substance, and especially fails at it in the phase changes, where the substance does not pause temperature change to break bonds but instead instanty is labled as a different state when it surpasses a (pretty much arbatrary) temperature.</p>
+
+<p>It's also unable to produce a plasma because particles here have no charge and no electrons to break free. It's rather limited, but a useful and fun model nonetheless.</p>
+
+
+
+
+<style>
+  canvas {
+    border: 1px solid black
+  }
+  code {
+      white-space: pre-wrap;
+  }
+</style>
+<script src="presets.js"></script>
+<script>
+
+
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+const tau = 2 * Math.PI;
+const canvas = document.querySelector("canvas");
+const ctx = canvas.getContext('2d');
+
+
+const sinterval = setInterval(updateStats, 300);
+function updateStats() {
+    const a = particles.length;
+    let avgX = 0;
+    let avgY = 0;
+    particles.forEach(particle => {
+      avgX += particle.sx;
+      avgY += particle.sy;
+    });
+    avgX = a > 0 ? avgX / a : 0;
+    avgY = a > 0 ? avgY / a : 0;
+    let t = 0;
+    particles.forEach(particle => {
+      t += Math.hypot(particle.sx - avgX, particle.sy - avgY);
+    });
+    const b = a > 0 ? t / a : 0;
+    let c;
+    if (b>2.8) {
+        c="gas"
+    } else if (b > 1.2) {
+        c="liquid"
+    } else {
+        c="solid"
+    }
+    document.getElementById("particle-count").textContent = "Particles:     " + a;
+    document.getElementById("avg-speed").textContent = "Avg. Speed:    " + b.toFixed(2) + " ppt ";
+    document.getElementById("state").textContent = "State:         " + c;
+}
+
+
+function drawParticle(x,y,color) {
+  ctx.beginPath();
+  ctx.arc(x, y, 3, 0, tau);
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+let particles = []
+
+function preset(number) {
+    particles = presets[number].map(particle => ({...particle}));
+}
+
+preset(1)
+
+
+const tickRepeat = setInterval(tick, 30)
+function tick() {
+  // draw
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  particles.forEach(particle => {
+    const t = ((Math.hypot(particle.sx),Math.abs(particle.sy))/12)**0.5;
+    drawParticle(particle.x,particle.y,`rgb(${255 * t}, 0, ${255 * (1 - t)})`)
+  });
+  
+  for (let _=0;_<10;_++) {
+      applyAttraction(0.1);
+  }
+}
+    
+
+let effector = {
+    "x":0,
+    "y":0,
+    "action":"freeze",
+    "down":0,
+    "dist":50
+}
+canvas.addEventListener("mousedown", (e) => {
+    effector.down = 1
+    effector.action = document.getElementById("click").value;
+    effector.x = e.offsetX;
+    effector.y = e.offsetY;
+    
+    if (effector.action === "carry") {
+        particles.forEach((particle) => {
+            const dx = particle.x - effector.x;
+            const dy = particle.y - effector.y;
+            particle.held = Math.sqrt(dx ** 2 + dy ** 2) < effector.dist;
+            if (particle.held) {
+                particle.cx = dx;
+                particle.cy = dy;
+                particle.sx = 0;
+                particle.sy = 0;
+            }
+        });
+    }
+});
+    
+    
+document.getElementById("radier").addEventListener("change", (e) => {
+    effector.dist = document.getElementById("radier").value;
+});
+    
+    
+    
+canvas.addEventListener("mousemove", (e) => {
+    effector.x = e.offsetX;
+    effector.y = e.offsetY;
+    
+    if (effector.down && effector.action==="add") {
+        particles.push({x:effector.x,y:effector.y,sx:0,sy:0,dir:0,cx:0,cy:0,held:0})
+    }
+});
+canvas.addEventListener("mouseup", (e) => {
+    effector.down = 0
+    particles.forEach((particle) => {
+        particle.held = 0;
+    });
+});
+canvas.addEventListener("mouseleave", (e) => {
+    effector.down = 0
+    particles.forEach((particle) => {
+        particle.held = 0;
+    });
+});
+    
+
+
+function applyAttraction(scale) {
+    
+      
+  // loop all particles
+  for (let i=0; i<particles.length; i++) {
+    let particle = particles[i];
+      
+    particle.sy += 0.05 * scale
+    
+        
+    // loop all particles not yet checked for ech partcile
+    for (let j=i+1; j<particles.length; j++) {
+      const xdist = particle.x - particles[j].x;
+      const ydist = particle.y - particles[j].y;
+      const dist = Math.sqrt(xdist**2 + ydist**2);
+      
+      const strength = 10;
+      const lockingDist = 11;
+      const distLimit = 40;
+      if (dist > 0 && dist < distLimit) {
+      
+          // 1 = perfect; far from it = bad
+          const closeness = lockingDist / dist
+          
+          // closeness > 1: **12 > **6; psitive number
+          // closeness < 1: **12 < **6; negative number
+          const vectorIsKing = closeness**4 - closeness**8;
+          
+          // divide dist is taking into account distance for force
+          const force = clamp(scale * vectorIsKing * strength / dist, -0.1, 0.1);
+          
+          // apply force
+          const forceX = (xdist / dist) * force; // xdist is a Vectorrr!!! (half of one at least)
+          const forceY = (ydist / dist) * force; // (xdist, ydist) is a Vectorrr!!!
+          
+          particle.sx -= forceX;
+          particle.sy -= forceY;
+          particles[j].sx += forceX;
+          particles[j].sy += forceY;
+      }
+    }
+  }
+  
+  particles.forEach((particle) => {
+      
+      if (effector.down) {
+        const dx = particle.x - effector.x;
+        const dy = particle.y - effector.y;
+        const distance = Math.sqrt(dx ** 2 + dy ** 2);
+        if (distance < effector.dist || (effector.action === "carry" && particle.held)) {
+          if (effector.action === "repel") {
+            const force = Math.min(0.3,1/distance)
+            particle.sx += force * dx / distance
+            particle.sy += force * dy / distance
+          } else if (effector.action === "freeze") {
+            particle.sx = 0
+            particle.sy = 0
+          } else if (effector.action === "wiggle") {
+            particle.sx += (Math.random()-0.5)/2
+            particle.sy += (Math.random()-0.5)/2
+          } else if (effector.action === "attract") {
+              const force = Math.min(0.3,0.3/distance)
+              particle.sx -= force * dx / distance
+              particle.sy -= force * dy / distance
+          } else if (effector.action === "10bil") {
+              particle.sx += (Math.random()-0.5)*100
+              particle.sy += (Math.random()-0.5)*100
+          } else if (effector.action === "carry" && particle.held) {
+              particle.sx = (particle.sx + (effector.x + particle.cx - particle.x) * 0.0005) * 0.95;
+              particle.sy = (particle.sy + (effector.y + particle.cy - particle.y) * 0.0005) * 0.95;
+          } else if (effector.action === "subtract") {
+              particle.deleted = true;
+              return;
+          }
+        }
+      }
+      
+      
+      particle.sx = clamp(particle.sx, -10, 10);
+      particle.sy = clamp(particle.sy, -10, 10);
+
+      // wall collide
+      particle.x += particle.sx * scale;
+      if (particle.x<3 || particle.x>canvas.width-3) {
+        particle.sx *= -0.99;
+        particle.x = clamp(particle.x, 3, canvas.width - 3);
+      }
+      particle.y += particle.sy * scale;
+      if (particle.y<3 || particle.y>canvas.height-3) {
+        particle.sy *= -0.99;
+        particle.y = clamp(particle.y, 3, canvas.height - 3);
+      }
+      
+  });
+  particles = particles.filter(particle => !particle.deleted);
+}
+
+
+
+
+
+</script>
