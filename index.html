@@ -20,20 +20,24 @@ Presets:
 <button id="gas" onclick="preset(2)">Gas</button>
 <button id="empty" onclick="preset(3)">Empty</button>
 <br><br>
-<code id="particle-count">Particles:     100</code><br>
-<code id="avg-speed">Avg. Speed:    1 ppt </code><small>(pixels per tick)</small><br>
-<code id="state">State:         liquid</code>
-<br><br>
+<code id="particle-count">Particles:     N/A</code><br>
+<code id="avg-speed">Avg. Speed:    N/A </code><small>(pixels per tick)</small><br>
+<code id="state">State:         N/A</code>
+<br>
+<strong>Last phase change:</strong><br>
+<code id="temp-dir">N/A</code><br>
+<code id="phase-change"></code><br>
+<code id="phase-change-name"></code>
+<br><br><br><br>
 <p>This simulation is not intended to accurately simulate any real world substance, and especially fails at it in the phase changes, where the substance does not pause temperature change to break bonds but instead instanty is labled as a different state when it surpasses a (pretty much arbatrary) temperature.</p>
 
 <p>It's also unable to produce a plasma because particles here have no charge and no electrons to break free. It's rather limited, but a useful and fun model nonetheless.</p>
 
 
-
-
 <style>
   canvas {
-    border: 1px solid black
+    border: 1px solid black;
+    touch-action: none;
   }
   code {
       white-space: pre-wrap;
@@ -49,7 +53,8 @@ const canvas = document.querySelector("canvas");
 const ctx = canvas.getContext('2d');
 
 
-const sinterval = setInterval(updateStats, 300);
+let state;
+const sinterval = setInterval(updateStats, 1000);
 function updateStats() {
     const a = particles.length;
     let avgX = 0;
@@ -76,6 +81,47 @@ function updateStats() {
     document.getElementById("particle-count").textContent = "Particles:     " + a;
     document.getElementById("avg-speed").textContent = "Avg. Speed:    " + b.toFixed(2) + " ppt ";
     document.getElementById("state").textContent = "State:         " + c;
+    let tempDir;
+    let phaseChange;
+    let phaseChangeName;
+    
+    if (state !== undefined && c !== state) {
+        if (state==="solid") {
+            if (c==="liquid") {
+                tempDir = "Adding energy (+temp)";
+                phaseChange = "Solid -> Liquid";
+                phaseChangeName = "Melting";
+            } else if (c==="gas") {
+                tempDir = "Adding energy (+temp)";
+                phaseChange = "Solid -> Gas";
+                phaseChangeName = "Sublimation";
+            }
+        } else if (state==="liquid") {
+            if (c==="solid") {
+                tempDir = "Removing energy (-temp)";
+                phaseChange = "Liquid -> Solid";
+                phaseChangeName = "Freezing";
+            } else if (c==="gas") {
+                tempDir = "Adding energy (+temp)";
+                phaseChange = "Liquid -> Gas";
+                phaseChangeName = "Vaporization";
+            }
+        } else if (state==="gas") {
+            if (c==="solid") {
+                tempDir = "Removing energy (-temp)";
+                phaseChange = "Gas -> Solid";
+                phaseChangeName = "Deposition";
+            } else if (c==="liquid") {
+                tempDir = "Removing energy (-temp)";
+                phaseChange = "Gas -> Liquid";
+                phaseChangeName = "Condensation";
+            }
+        }
+        document.getElementById("temp-dir").textContent = tempDir;
+        document.getElementById("phase-change").textContent = phaseChange;
+        document.getElementById("phase-change-name").textContent = phaseChangeName;
+    }
+    state = c;
 }
 
 
@@ -117,7 +163,7 @@ let effector = {
     "down":0,
     "dist":50
 }
-canvas.addEventListener("mousedown", (e) => {
+canvas.addEventListener("pointerdown", (e) => {
     effector.down = 1
     effector.action = document.getElementById("click").value;
     effector.x = e.offsetX;
@@ -145,7 +191,7 @@ document.getElementById("radier").addEventListener("change", (e) => {
     
     
     
-canvas.addEventListener("mousemove", (e) => {
+canvas.addEventListener("pointermove", (e) => {
     effector.x = e.offsetX;
     effector.y = e.offsetY;
     
@@ -153,13 +199,19 @@ canvas.addEventListener("mousemove", (e) => {
         particles.push({x:effector.x,y:effector.y,sx:0,sy:0,dir:0,cx:0,cy:0,held:0})
     }
 });
-canvas.addEventListener("mouseup", (e) => {
+canvas.addEventListener("pointerup", (e) => {
     effector.down = 0
     particles.forEach((particle) => {
         particle.held = 0;
     });
 });
-canvas.addEventListener("mouseleave", (e) => {
+canvas.addEventListener("pointerleave", (e) => {
+    effector.down = 0
+    particles.forEach((particle) => {
+        particle.held = 0;
+    });
+});
+canvas.addEventListener("pointercancel", (e) => {
     effector.down = 0
     particles.forEach((particle) => {
         particle.held = 0;
@@ -229,7 +281,7 @@ function applyAttraction(scale) {
             particle.sx += (Math.random()-0.5)/2
             particle.sy += (Math.random()-0.5)/2
           } else if (effector.action === "attract") {
-              const force = Math.min(0.3,0.3/distance)
+              const force = Math.min(0.3,1/distance)
               particle.sx -= force * dx / distance
               particle.sy -= force * dy / distance
           } else if (effector.action === "10bil") {
